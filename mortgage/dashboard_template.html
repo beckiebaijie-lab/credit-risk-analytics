@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Freddie Mac Mortgage Credit Risk</title>
+<style>
+body{margin:0;background:#eef4f3;color:#153235;font:16px system-ui}
+header{background:#102f36;color:white;padding:38px max(22px,6vw)}
+h1{font-size:clamp(2rem,5vw,3.5rem);margin:0}
+header p{color:#d1e7e4}
+main{max-width:1050px;margin:auto;padding:22px}
+section{background:white;border:1px solid #d9e7e5;padding:20px 24px;margin-bottom:16px;border-radius:12px;overflow:auto}
+h2{margin-top:0}label{display:inline-block;margin:0 16px 12px 0}
+select{font:inherit;padding:5px 8px;background:white;color:#153235;border:1px solid #5f817d;border-radius:5px}
+table{width:100%;border-collapse:collapse;white-space:nowrap;font-variant-numeric:tabular-nums}
+td,th{padding:9px;text-align:left;border-bottom:1px solid #e1ecea}
+summary{cursor:pointer;margin:12px 0}
+</style>
+</head>
+<body>
+<header><h1>Freddie Mac Mortgage Credit Risk</h1><p>12-month serious delinquency · January–June 2025 first-payment holdout</p></header>
+<main>
+<section><h2>Observed loan cohorts</h2><div id="splits"></div><details><summary>View outcome coverage audit</summary><div id="cohort_quality"></div></details></section>
+<section><h2>Model performance</h2>
+<label>Model <select id="model"><option>Logistic Regression</option><option>Random Forest</option></select></label>
+<label>Probabilities <select id="version"><option>Calibrated</option><option>Raw</option></select></label>
+<div id="metrics"></div><p>Precision and recall use the threshold targeting 75% retention in calibration.</p>
+<h3>Probability calibration</h3><div id="calibration"></div></section>
+<section><h2>Risk tiers and simulated retention</h2><div id="risk_tiers"></div>
+<p>Policy uses calibrated probabilities. Thresholds are fixed in calibration and applied to the 2025 holdout.</p>
+<label>Calibration retention target <select id="target"></select></label><div id="policy" aria-live="polite"></div></section>
+<section><h2>Holdout risk factors</h2><div id="risk_factors"></div></section>
+</main>
+<script id="data" type="application/json">{{DATA}}</script>
+<script>
+const data = JSON.parse(document.getElementById('data').textContent);
+const el = id => document.getElementById(id);
+const pct = n => n == null ? '—' : (n*100).toFixed(2)+'%';
+const num = n => n.toLocaleString('en-US');
+const dec = n => n.toFixed(5);
+const esc = x => String(x).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+function table(id, headings, rows) {
+  el(id).innerHTML = '<table><thead><tr>' + headings.map(x=>'<th scope="col">'+esc(x)+'</th>').join('') +
+    '</tr></thead><tbody>' + rows.map(row=>'<tr>'+row.map(x=>'<td>'+esc(x)+'</td>').join('')+'</tr>').join('') +
+    '</tbody></table>';
+}
+table('splits',['Stage','Loans','Events','Event rate'],data.splits.map(r=>[r.split,num(r.loans),num(r.events),pct(r.event_rate)]));
+table('cohort_quality',['Stage','Outcome status','Loans'],data.cohort_quality.map(r=>[r.split,r.outcome_status.replaceAll('_',' '),num(r.loans)]));
+table('risk_factors',['Factor','Segment','Loans','Events','Observed rate'],data.risk_factors.map(r=>[r.factor,r.segment,num(r.loans),num(r.events),pct(r.observed)]));
+for (const t of [...new Set(data.policy.map(r=>r.calibration_target))]) {
+  el('target').add(new Option(t===1?'Retain all':pct(t), t, t===.75, t===.75));
+}
+function refresh() {
+  const model=el('model').value, version=el('version').value;
+  const select=r=>r.model===model&&r.version===version;
+  table('metrics',['ROC-AUC','Average precision','Precision','Recall','Brier','ECE'],
+    data.metrics.filter(select).map(r=>[dec(r.roc_auc),dec(r.average_precision),pct(r.precision),pct(r.recall),dec(r.brier),pct(r.ece)]));
+  table('calibration',['Probability bin','Loans','Mean predicted','Observed rate'],
+    data.calibration.filter(select).map(r=>[r.bin,num(r.loans),pct(r.mean_pd),pct(r.observed)]));
+  const tiers=data.risk_tiers.filter(r=>r.model===model);
+  table('risk_tiers',['Tier','Loans','Events','Mean predicted','Observed rate'],
+    ['Low','Medium','High'].flatMap(tier=>tiers.filter(r=>r.tier===tier).map(r=>[r.tier,num(r.loans),num(r.events),pct(r.mean_pd),pct(r.observed)])));
+  table('policy',['Risk threshold','2025 retention','Loans retained','Balance retained (USD)','Retained event rate','Events flagged'],
+    data.policy.filter(r=>r.model===model&&r.calibration_target===Number(el('target').value)).map(r=>[
+      pct(r.threshold),pct(r.retention),num(r.loans),num(r.retained_balance),pct(r.retained_event_rate),pct(r.share_events_flagged)]));
+}
+for (const id of ['model','version','target']) el(id).addEventListener('change',refresh);
+refresh();
+</script>
+</body>
+</html>
