@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LendingClub Credit Risk Analytics</title>
+<style>
+:root{font:16px system-ui;color:#172b35;background:#eef2f0}
+body{margin:0} header{background:#142d35;color:white;padding:46px max(5vw,20px)}
+h1{font-size:clamp(2rem,5vw,3.5rem);margin:0} header p{color:#c9ded8}
+main{max-width:1100px;margin:auto;padding:24px 20px 48px} section{border:1px solid #d9e3de;background:white;border-radius:14px;padding:24px;margin:0 0 20px;overflow:auto}
+h2{margin:0 0 12px} p{line-height:1.6} label{display:inline-flex;align-items:center;gap:10px;margin:0 18px 14px 0}
+select{font:inherit;padding:8px;background:white;color:#172b35;border:1px solid #66877e;border-radius:6px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px}.card{background:#edf5f1;padding:16px;border-radius:8px}.card strong{display:block;font-size:1.65rem;color:#0d604d}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;white-space:nowrap} th,td{padding:10px;border-bottom:1px solid #e3ebe7;text-align:left} td:has(meter){min-width:145px}
+meter{width:70px;vertical-align:middle;accent-color:#0d604d}.muted{color:#52666a}
+</style>
+</head>
+<body>
+<header><h1>LendingClub Credit Risk Analytics</h1><p>Historical funded loans with terminal outcomes · 2012 holdout</p></header>
+<main>
+<section><h2>Data and time split</h2><p>Loan counts by stage: {{SPLITS}} for 2008–2010 training, 2011 calibration, and 2012 testing, respectively. The outcome is terminal charge-off.</p><div id="vintages"></div><details><summary>View SQL quality checks and missing feature counts</summary><div id="quality"></div><div id="missing"></div></details></section>
+<section><h2>Model performance</h2>
+<label>Model<select id="model"><option>Logistic Regression</option><option>Random Forest</option></select></label>
+<label>Probability version<select id="version"><option value="Calibrated">Calibrated</option><option value="Raw">Raw</option></select></label>
+<div id="cards" class="cards"></div><p class="muted">Precision and recall use a 20% charge-off probability threshold.</p><div id="metrics"></div></section>
+<section><h2>Probability calibration</h2><p>Compare the mean prediction with the observed rate in each probability bin. Lower Brier scores indicate smaller probability errors.</p><div id="calibration"></div></section>
+<section><h2>Risk tiers and approval simulation</h2><p>Policies use calibrated probabilities from the selected model and are simulated on historically approved loans.</p>
+<div id="tiers"></div><p><label>Retention rule<select id="threshold"></select></label></p>
+<div id="policy" class="cards" aria-live="polite"></div></section>
+<section><h2>Holdout risk factors</h2><p>Group differences describe associations.</p><div id="factors"></div></section>
+</main>
+<script id="data" type="application/json">{{DATA}}</script>
+<script>
+const data = JSON.parse(document.getElementById('data').textContent);
+const el = id => document.getElementById(id);
+const percent = x => x == null ? '—' : (x * 100).toFixed(2) + '%';
+const number = x => x == null ? '—' : x.toLocaleString('en-US');
+const decimal = x => x.toFixed(4);
+const bar = x => x == null ? '—' : `<meter min="0" max="1" value="${x}" aria-label="Charge-off rate"></meter> ${percent(x)}`;
+function table(id, headers, rows) {
+  el(id).innerHTML = '<table><thead><tr>' + headers.map(x => '<th scope="col">' + x + '</th>').join('') +
+    '</tr></thead><tbody>' + rows.map(row => '<tr>' + row.map(x => '<td>' + x + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+}
+function cards(id, rows) {
+  el(id).innerHTML = rows.map(([label, value]) => `<div class="card"><strong>${value}</strong>${label}</div>`).join('');
+}
+table('vintages', ['Origination year','Loans','Charge-offs','Observed charge-off rate'], data.vintages.map(r => [r.year,number(r.loans),number(r.chargeoffs),bar(r.actual_rate)]));
+table('quality', ['SQL audit result','Loans'], data.quality.map(r => [r.quality_status,number(r.loans)]));
+table('missing', ['Field','Missing values'], data.missing.map(r => [r.field,number(r.missing)]));
+table('factors', ['Factor','Segment','Loans','Charge-offs','Observed charge-off rate'], data.risk_factors.map(r => [r.factor,r.segment,number(r.loans),number(r.chargeoffs),bar(r.actual_rate)]));
+table('metrics', ['Model','Version','ROC-AUC','Precision','Recall','Brier','ECE'], data.metrics.map(r => [r.model,r.version,decimal(r.roc_auc),percent(r.precision),percent(r.recall),decimal(r.brier),percent(r.ece)]));
+const thresholds = [...new Set(data.policy.map(r => r.threshold))];
+el('threshold').innerHTML = thresholds.map(t => `<option value="${t}" ${t === .2 ? 'selected' : ''}>${t === 1 ? 'Retain all (baseline)' : 'Probability below ' + Math.round(t*100) + '%'}</option>`).join('');
+function refresh() {
+  const model = el('model').value;
+  const version = el('version').value;
+  const choice = r => r.model === model && r.version === version;
+  const metric = data.metrics.find(choice);
+  cards('cards', [['ROC-AUC',decimal(metric.roc_auc)],['Precision',percent(metric.precision)],['Recall',percent(metric.recall)],['Brier score',decimal(metric.brier)]]);
+  table('calibration', ['Probability bin','Loans','Mean predicted probability','Observed charge-off rate'], data.calibration.filter(choice).map(r => [`${r.bin * 10}–${(r.bin + 1) * 10}%`,number(r.loans),percent(r.mean_pd),bar(r.actual_rate)]));
+  table('tiers', ['Risk tier','Loans','Mean predicted probability','Observed charge-off rate'], data.risk_tiers.filter(r => r.model === model).map(r => [r.tier,number(r.loans),percent(r.mean_pd),bar(r.actual_rate)]));
+  const p = data.policy.find(r => r.model === model && r.threshold === Number(el('threshold').value));
+  cards('policy', [['Retention rate',percent(p.retention)],['Loans retained',number(p.retained)],['Retained loan amount (USD)',number(p.retained_amount)],['Retained portfolio charge-off rate',percent(p.retained_chargeoff_rate)],['Share of charge-offs flagged',percent(p.flagged_chargeoff_share)]]);
+}
+for (const id of ['model','version','threshold']) el(id).addEventListener('change', refresh);
+refresh();
+</script>
+</body>
+</html>

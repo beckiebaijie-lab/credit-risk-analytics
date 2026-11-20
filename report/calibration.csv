@@ -1,0 +1,24 @@
+bin,loans,mean_pd,actual_rate,model,version
+0,15811,0.07236019,0.07184871,Logistic Regression,Raw
+1,26530,0.14181045,0.15959291,Logistic Regression,Raw
+2,7716,0.24067472,0.26283048,Logistic Regression,Raw
+3,2571,0.33987348,0.35978219,Logistic Regression,Raw
+4,628,0.43484544,0.41242038,Logistic Regression,Raw
+5,95,0.53636180,0.54736842,Logistic Regression,Raw
+6,16,0.62683162,0.62500000,Logistic Regression,Raw
+0,15253,0.07196066,0.07041238,Logistic Regression,Calibrated
+1,26226,0.14232085,0.15560894,Logistic Regression,Calibrated
+2,8121,0.24065586,0.25760374,Logistic Regression,Calibrated
+3,2837,0.34115136,0.35142756,Logistic Regression,Calibrated
+4,770,0.43658650,0.40779221,Logistic Regression,Calibrated
+5,133,0.53314210,0.51879699,Logistic Regression,Calibrated
+6,27,0.63178997,0.62962963,Logistic Regression,Calibrated
+0,10570,0.07621467,0.06433302,Random Forest,Raw
+1,33815,0.14388669,0.15398492,Random Forest,Raw
+2,8862,0.23332551,0.30501016,Random Forest,Raw
+3,120,0.30853057,0.45000000,Random Forest,Raw
+0,15571,0.06677176,0.07449746,Random Forest,Calibrated
+1,23567,0.14401737,0.15224679,Random Forest,Calibrated
+2,10188,0.24258946,0.23861406,Random Forest,Calibrated
+3,3716,0.33966892,0.35844995,Random Forest,Calibrated
+4,325,0.41991306,0.40923077,Random Forest,Calibrated
