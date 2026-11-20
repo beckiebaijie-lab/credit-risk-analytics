@@ -18,9 +18,11 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 if __package__:
+    from .reconcile import reconcile
     from .stability import monthly_policy
     from .uncertainty import comparison
 else:
+    from reconcile import reconcile
     from stability import monthly_policy
     from uncertainty import comparison
 
@@ -70,7 +72,7 @@ def evaluate(database, output):
     splits = frame.groupby("split").event.agg(loans="size", events="sum", event_rate="mean")
     splits = splits.reindex(["train", "calibrate", "test"]).reset_index()
     metrics, bins, policies, risk, stability = [], [], [], [], []
-    holdout_predictions = []
+    holdout_predictions, audit_scores, audit_thresholds = [], [], []
     for name, classifier in [
         ("Logistic Regression", LogisticRegression(max_iter=500)),
         ("Random Forest", RandomForestClassifier(
@@ -107,8 +109,10 @@ def evaluate(database, output):
                                 mean_pd=p_test.mean(), actual_rate=test.event.mean()))
             bins.append(calibration.assign(model=name, version=version))
         holdout_predictions.append((calibrated_test, np.quantile(calibrated_cal, .75)))
+        audit_scores.append(test[["loan_id"]].assign(model=name, probability=calibrated_test))
         for target in TARGET_RETENTIONS:
             threshold = float(np.quantile(calibrated_cal, target)) if target < 1 else 1.01
+            audit_thresholds.append((name, target, threshold))
             policies.append(dict(model=name, calibration_target=target,
                                  threshold=threshold if target < 1 else np.nan,
                                  **policy_scores(test, calibrated_test, threshold)))
@@ -138,11 +142,17 @@ def evaluate(database, output):
                   risk_tiers=pd.concat(risk), risk_factors=pd.concat(factors),
                   monthly_stability=pd.concat(stability, ignore_index=True),
                   model_uncertainty=intervals)
+    tables["policy_reconciliation"] = reconcile(
+        database, pd.concat(audit_scores, ignore_index=True), audit_thresholds,
+        tables["monthly_stability"], tables["policy"],
+    )
+    print(f"SQLite reconciliation passed for {len(tables['policy_reconciliation'])} policy groups")
     output.mkdir(parents=True, exist_ok=True)
     for name, table in tables.items():
         table.to_csv(output / f"{name}.csv", index=False, float_format="%.8f")
     payload = json.dumps({name: json.loads(table.to_json(orient="records"))
-                          for name, table in tables.items()}).replace("<", "\\u003c")
+                          for name, table in tables.items()
+                          if name != "policy_reconciliation"}).replace("<", "\\u003c")
     template = Path(__file__).with_name("dashboard_template.html").read_text()
     (output / "dashboard.html").write_text(template.replace("{{DATA}}", payload), encoding="utf-8")
     print(splits.to_string(index=False))
