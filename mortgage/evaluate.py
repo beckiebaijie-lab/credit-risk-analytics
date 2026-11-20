@@ -17,6 +17,13 @@ from sklearn.metrics import (
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+if __package__:
+    from .stability import monthly_policy
+    from .uncertainty import comparison
+else:
+    from stability import monthly_policy
+    from uncertainty import comparison
+
 NUMERIC = ["fico", "cltv", "dti", "log_upb", "ltv", "term"]
 CATEGORY = ["occupancy", "property_type", "purpose"]
 TARGET_RETENTIONS = [0.70, 0.75, 0.80, 0.90, 1.00]
@@ -62,7 +69,8 @@ def evaluate(database, output):
     x_train, x_cal, x_test = (part[NUMERIC + CATEGORY] for part in (train, cal, test))
     splits = frame.groupby("split").event.agg(loans="size", events="sum", event_rate="mean")
     splits = splits.reindex(["train", "calibrate", "test"]).reset_index()
-    metrics, bins, policies, risk = [], [], [], []
+    metrics, bins, policies, risk, stability = [], [], [], [], []
+    holdout_predictions = []
     for name, classifier in [
         ("Logistic Regression", LogisticRegression(max_iter=500)),
         ("Random Forest", RandomForestClassifier(
@@ -98,11 +106,16 @@ def evaluate(database, output):
                                 brier=brier_score_loss(test.event, p_test), ece=ece,
                                 mean_pd=p_test.mean(), actual_rate=test.event.mean()))
             bins.append(calibration.assign(model=name, version=version))
+        holdout_predictions.append((calibrated_test, np.quantile(calibrated_cal, .75)))
         for target in TARGET_RETENTIONS:
             threshold = float(np.quantile(calibrated_cal, target)) if target < 1 else 1.01
             policies.append(dict(model=name, calibration_target=target,
                                  threshold=threshold if target < 1 else np.nan,
                                  **policy_scores(test, calibrated_test, threshold)))
+            stability.append(monthly_policy(test, calibrated_test, threshold).assign(
+                model=name, calibration_target=target,
+                threshold=threshold if target < 1 else np.nan,
+            ))
         lower, upper = np.quantile(calibrated_cal, [.50, .75])
         tier = np.select([calibrated_test < lower, calibrated_test < upper],
                          ["Low", "Medium"], default="High")
@@ -118,9 +131,13 @@ def evaluate(database, output):
         segment = pd.cut(values, levels, labels=labels, right=False)
         factors.append(test.assign(segment=segment).groupby("segment", observed=True).event.agg(
             loans="size", events="sum", observed="mean").reset_index().assign(factor=factor))
+    (lr_scores, lr_cutoff), (rf_scores, rf_cutoff) = holdout_predictions
+    intervals = comparison(test.event, lr_scores, rf_scores, lr_cutoff, rf_cutoff)
     tables = dict(cohort_quality=quality, splits=splits, metrics=pd.DataFrame(metrics),
                   calibration=pd.concat(bins), policy=pd.DataFrame(policies),
-                  risk_tiers=pd.concat(risk), risk_factors=pd.concat(factors))
+                  risk_tiers=pd.concat(risk), risk_factors=pd.concat(factors),
+                  monthly_stability=pd.concat(stability, ignore_index=True),
+                  model_uncertainty=intervals)
     output.mkdir(parents=True, exist_ok=True)
     for name, table in tables.items():
         table.to_csv(output / f"{name}.csv", index=False, float_format="%.8f")

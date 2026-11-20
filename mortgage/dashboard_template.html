@@ -30,6 +30,8 @@ summary{cursor:pointer;margin:12px 0}
 <section><h2>Risk tiers and simulated retention</h2><div id="risk_tiers"></div>
 <p>Policy uses calibrated probabilities. Thresholds are fixed in calibration and applied to the 2025 holdout.</p>
 <label>Calibration retention target <select id="target"></select></label><div id="policy" aria-live="polite"></div></section>
+<section><h2>Monthly policy stability</h2><p>The selected threshold is held fixed across months. Read capture rates alongside event counts. A dash indicates an undefined rate.</p><div id="monthly_stability" aria-live="polite"></div></section>
+<section><h2>Model comparison uncertainty</h2><p>Logistic Regression minus Random Forest on paired resamples of the 2025 holdout. Policy gaps use each model’s locked 75% calibration target.</p><div id="model_uncertainty"></div></section>
 <section><h2>Holdout risk factors</h2><div id="risk_factors"></div></section>
 </main>
 <script id="data" type="application/json">{{DATA}}</script>
@@ -47,6 +49,11 @@ function table(id, headings, rows) {
 }
 table('splits',['Stage','Loans','Events','Event rate'],data.splits.map(r=>[r.split,num(r.loans),num(r.events),pct(r.event_rate)]));
 table('cohort_quality',['Stage','Outcome status','Loans'],data.cohort_quality.map(r=>[r.split,r.outcome_status.replaceAll('_',' '),num(r.loans)]));
+table('model_uncertainty',['Metric','Difference','95% lower','95% upper','Resamples'],
+  data.model_uncertainty.map(r=>{
+    const format = r.metric==='ROC-AUC gap' ? dec : n=>(n*100).toFixed(2)+' pp';
+    return [r.metric,format(r.estimate),format(r.lower_95),format(r.upper_95),num(r.bootstrap_draws)];
+  }));
 table('risk_factors',['Factor','Segment','Loans','Events','Observed rate'],data.risk_factors.map(r=>[r.factor,r.segment,num(r.loans),num(r.events),pct(r.observed)]));
 for (const t of [...new Set(data.policy.map(r=>r.calibration_target))]) {
   el('target').add(new Option(t===1?'Retain all':pct(t), t, t===.75, t===.75));
@@ -61,9 +68,13 @@ function refresh() {
   const tiers=data.risk_tiers.filter(r=>r.model===model);
   table('risk_tiers',['Tier','Loans','Events','Mean predicted','Observed rate'],
     ['Low','Medium','High'].flatMap(tier=>tiers.filter(r=>r.tier===tier).map(r=>[r.tier,num(r.loans),num(r.events),pct(r.mean_pd),pct(r.observed)])));
+  const scenario = r => r.model===model&&r.calibration_target===Number(el('target').value);
   table('policy',['Risk threshold','2025 retention','Loans retained','Balance retained (USD)','Retained event rate','Events flagged'],
-    data.policy.filter(r=>r.model===model&&r.calibration_target===Number(el('target').value)).map(r=>[
+    data.policy.filter(scenario).map(r=>[
       pct(r.threshold),pct(r.retention),num(r.loans),num(r.retained_balance),pct(r.retained_event_rate),pct(r.share_events_flagged)]));
+  table('monthly_stability',['First payment','Loans','Events','Observed rate','Loans retained','Retention','Retained event rate','Events flagged','Capture rate'],
+    data.monthly_stability.filter(scenario).map(r=>[r.first_payment_month,num(r.loans),num(r.events),
+      pct(r.observed_rate),num(r.loans_retained),pct(r.retention),pct(r.retained_event_rate),num(r.events_flagged),pct(r.capture_rate)]));
 }
 for (const id of ['model','version','target']) el(id).addEventListener('change',refresh);
 refresh();

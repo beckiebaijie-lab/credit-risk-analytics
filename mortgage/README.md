@@ -10,12 +10,12 @@ From the repository root, use Python 3.14 and the pinned root requirements. Keep
 
 ```sh
 python -m pip install -r requirements.txt
-python -m unittest -v test_pipeline mortgage.test_cohort
+python -m unittest -v test_pipeline mortgage.test_cohort mortgage.test_stability mortgage.test_uncertainty
 python mortgage/cohort.py data/sample_2020.zip data/sample_2021.zip data/sample_2022.zip data/sample_2023.zip data/sample_2024.zip data/sample_2025.zip --database data/mortgage.sqlite
 python mortgage/evaluate.py --database data/mortgage.sqlite
 ```
 
-Open `mortgage/report/dashboard.html` in a browser. The generated HTML and seven aggregate CSVs are saved locally. The database path must be new for each cohort build. To generate a second report from an existing database, pass `--report PATH` to the evaluator.
+Open `mortgage/report/dashboard.html` in a browser. The generated HTML and nine aggregate CSVs are saved locally. The database path must be new for each cohort build. To generate a second report from an existing database, pass `--report PATH` to the evaluator.
 
 ## Cohort and leakage controls
 
@@ -38,6 +38,10 @@ SQL uses loan identifiers to connect origination and servicing records. The mode
 3. Set the calibration retention target to 75%. Each model's threshold is derived from its own earlier calibration scores and stays fixed on the 2025 holdout. Realized holdout retention can differ from the calibration target and between models. Precision and recall use this operating point for the selected probability version.
 4. Compare the share of serious delinquencies flagged and the balance retained. Risk tiers use score cutoffs determined by the 50th and 75th percentiles of calibrated scores on the calibration cohort. Historical mortgages were already acquired or guaranteed. This simulation does not evaluate declined borrowers, policy causality, or production fairness.
 
+5. Review **Monthly policy stability** for the selected model and calibration target. Each row groups the holdout by first scheduled payment month and uses the same locked threshold. Compare origination cohort size, observed event rate, retention, and the share of observed events flagged. Read event counts alongside rates because a small number of events can move the monthly estimates substantially.
+
+6. Open **Model comparison uncertainty** to see differences between Logistic Regression and Random Forest. The analysis resamples the same 2025 loans for both models in 1,000 draws, separately within observed events and non-events. It reports percentile intervals for the model gaps, conditional on the fixed scores, thresholds, and observed class counts. These intervals do not include model refitting uncertainty or account for geographic or other clustering.
+
 ## Power BI setup
 
 On Windows, use **Home → Get data → Text/CSV** to import `mortgage/report/*.csv` with UTF-8 and comma separators. Use the following tables independently or create a model dimension for a shared slicer.
@@ -48,6 +52,10 @@ On Windows, use **Home → Get data → Text/CSV** to import `mortgage/report/*.
 | `metrics.csv` | Model comparison with model and probability version filters |
 | `calibration.csv` | Mean predicted versus observed rate by probability bin |
 | `policy.csv` | Realized retention and flagged events by calibration target |
+| `model_uncertainty.csv` | Paired model differences with 95% percentile bounds |
+| `monthly_stability.csv` | Monthly retention and event capture with model and calibration target filters |
 | `risk_tiers.csv`, `risk_factors.csv` | Observed event rates with loan and event counts |
 
 Format rates and probability thresholds as percentages and retained balances as USD. Filter to one model and probability version before charting individual calibration bins. Policy rows describe overlapping scenarios, so select one model and target when reading retained balances and counts.
+
+For monthly stability, use `first_payment_month` on the axis and show event counts in tooltips. When rolling up months, divide summed counts to get the combined rate.
