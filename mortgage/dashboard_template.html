@@ -32,6 +32,7 @@ summary{cursor:pointer;margin:12px 0}
 <label>Calibration retention target <select id="target"></select></label><div id="policy" aria-live="polite"></div></section>
 <section><h2>Monthly policy stability</h2><p>The selected threshold is held fixed across months. Read capture rates alongside event counts. A dash indicates an undefined rate.</p><div id="monthly_stability" aria-live="polite"></div></section>
 <section><h2>Model comparison uncertainty</h2><p>Logistic Regression minus Random Forest on paired resamples of the 2025 holdout. Policy gaps use each model’s locked 75% calibration target.</p><div id="model_uncertainty"></div></section>
+<section><h2>Equal review capacity</h2><p>Both models review the same number of top-ranked holdout loans. Lift compares the event rate among reviewed loans with the overall holdout event rate.</p><div id="review_capacity"></div></section>
 <section><h2>Holdout risk factors</h2><div id="risk_factors"></div></section>
 </main>
 <script id="data" type="application/json">{{DATA}}</script>
@@ -54,6 +55,9 @@ table('model_uncertainty',['Metric','Difference','95% lower','95% upper','Resamp
     const format = r.metric==='ROC-AUC gap' ? dec : n=>(n*100).toFixed(2)+' pp';
     return [r.metric,format(r.estimate),format(r.lower_95),format(r.upper_95),num(r.bootstrap_draws)];
   }));
+table('review_capacity',['Model','Review target','Loans reviewed','Events captured','Capture rate','Lift'],
+  data.review_capacity.map(r=>[r.model,pct(r.review_target),num(r.reviewed),
+    num(r.events_flagged)+' / '+num(r.total_events),pct(r.capture_rate),r.lift.toFixed(2)+'×']));
 table('risk_factors',['Factor','Segment','Loans','Events','Observed rate'],data.risk_factors.map(r=>[r.factor,r.segment,num(r.loans),num(r.events),pct(r.observed)]));
 for (const t of [...new Set(data.policy.map(r=>r.calibration_target))]) {
   el('target').add(new Option(t===1?'Retain all':pct(t), t, t===.75, t===.75));

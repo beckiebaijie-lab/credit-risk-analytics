@@ -15,7 +15,7 @@ python mortgage/cohort.py data/sample_2020.zip data/sample_2021.zip data/sample_
 python mortgage/evaluate.py --database data/mortgage.sqlite
 ```
 
-Open `mortgage/report/dashboard.html` in a browser. The generated HTML and ten aggregate CSVs are saved locally. The database path must be new for each cohort build. To generate a second report from an existing database, pass `--report PATH` to the evaluator.
+Open `mortgage/report/dashboard.html` in a browser. The generated HTML and eleven aggregate CSVs are saved locally. The database path must be new for each cohort build. To generate a second report from an existing database, pass `--report PATH` to the evaluator.
 
 ## Cohort and leakage controls
 
@@ -42,6 +42,8 @@ SQL uses loan identifiers to connect origination and servicing records. The mode
 
 6. Open **Model comparison uncertainty** to see differences between Logistic Regression and Random Forest. The analysis resamples the same 2025 loans for both models in 1,000 draws, separately within observed events and non-events. It reports percentile intervals for the model gaps, conditional on the fixed scores, thresholds, and observed class counts. These intervals do not include model refitting uncertainty or account for geographic or other clustering.
 
+7. In **Equal review capacity**, rank each model’s calibrated holdout scores and review the top 10% or 20%, rounded down to whole loans. Ties keep the existing first-payment-month and loan-ID order. Capture rate divides flagged events by all observed events. Lift divides capture rate by the actual review share. This comparison measures rank performance at equal holdout capacity.
+
 ## SQL policy reconciliation
 
 [policy_reconciliation.sql](policy_reconciliation.sql) joins the eligible holdout cohort to temporary model scores and locked thresholds in SQLite. It independently applies the strict retention rule, aggregates counts by first payment month and for the full portfolio, and calculates rates from those counts. Python compares the results by model, threshold scenario, and period. It requires exact agreement on counts and portfolio balances, handles undefined rates as missing values, and stops report generation when a check fails. Loan scores and thresholds are kept in connection-local staging tables.
@@ -58,6 +60,7 @@ On Windows, use **Home → Get data → Text/CSV** to import `mortgage/report/*.
 | `policy.csv` | Realized retention and flagged events by calibration target |
 | `policy_reconciliation.csv` | SQLite audit results by model, scenario, and period |
 | `model_uncertainty.csv` | Paired model differences with 95% percentile bounds |
+| `review_capacity.csv` | Events captured and lift at equal 10% and 20% review budgets |
 | `monthly_stability.csv` | Monthly retention and event capture with model and calibration target filters |
 | `risk_tiers.csv`, `risk_factors.csv` | Observed event rates with loan and event counts |
 

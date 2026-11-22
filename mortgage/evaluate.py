@@ -63,6 +63,21 @@ def policy_scores(frame, probability, threshold):
     )
 
 
+def review_capacity(events, probabilities):
+    """Evaluate exact holdout review budgets with deterministic score ties."""
+    labels = np.asarray(events)
+    ranked = labels[np.argsort(-probabilities, kind="stable")]
+    total_events = int(labels.sum())
+    for fraction in (.10, .20):
+        reviewed = int(len(labels) * fraction)
+        captured = int(ranked[:reviewed].sum())
+        actual_share = reviewed / len(labels)
+        capture = captured / total_events
+        yield dict(review_target=fraction, reviewed=reviewed, reviewed_share=actual_share,
+                   events_flagged=captured, total_events=total_events,
+                   capture_rate=capture, lift=capture / actual_share if reviewed else np.nan)
+
+
 def evaluate(database, output):
     frame, quality = load_cohort(database)
     train, cal, test = (frame[frame.split == name] for name in ("train", "calibrate", "test"))
@@ -72,7 +87,7 @@ def evaluate(database, output):
     splits = frame.groupby("split").event.agg(loans="size", events="sum", event_rate="mean")
     splits = splits.reindex(["train", "calibrate", "test"]).reset_index()
     metrics, bins, policies, risk, stability = [], [], [], [], []
-    holdout_predictions, audit_scores, audit_thresholds = [], [], []
+    holdout_predictions, audit_scores, audit_thresholds, capacity = [], [], [], []
     for name, classifier in [
         ("Logistic Regression", LogisticRegression(max_iter=500)),
         ("Random Forest", RandomForestClassifier(
@@ -108,6 +123,7 @@ def evaluate(database, output):
                                 brier=brier_score_loss(test.event, p_test), ece=ece,
                                 mean_pd=p_test.mean(), actual_rate=test.event.mean()))
             bins.append(calibration.assign(model=name, version=version))
+        capacity.extend(dict(model=name, **row) for row in review_capacity(test.event, calibrated_test))
         holdout_predictions.append((calibrated_test, np.quantile(calibrated_cal, .75)))
         audit_scores.append(test[["loan_id"]].assign(model=name, probability=calibrated_test))
         for target in TARGET_RETENTIONS:
@@ -141,7 +157,7 @@ def evaluate(database, output):
                   calibration=pd.concat(bins), policy=pd.DataFrame(policies),
                   risk_tiers=pd.concat(risk), risk_factors=pd.concat(factors),
                   monthly_stability=pd.concat(stability, ignore_index=True),
-                  model_uncertainty=intervals)
+                  model_uncertainty=intervals, review_capacity=pd.DataFrame(capacity))
     tables["policy_reconciliation"] = reconcile(
         database, pd.concat(audit_scores, ignore_index=True), audit_thresholds,
         tables["monthly_stability"], tables["policy"],
