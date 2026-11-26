@@ -63,10 +63,10 @@ def policy_scores(frame, probability, threshold):
     )
 
 
-def review_capacity(events, probabilities):
+def review_capacity(events, risk_scores):
     """Evaluate exact holdout review budgets with deterministic score ties."""
     labels = np.asarray(events)
-    ranked = labels[np.argsort(-probabilities, kind="stable")]
+    ranked = labels[np.argsort(-risk_scores, kind="stable")]
     total_events = int(labels.sum())
     for fraction in (.10, .20):
         reviewed = int(len(labels) * fraction)
@@ -151,6 +151,11 @@ def evaluate(database, output):
         segment = pd.cut(values, levels, labels=labels, right=False)
         factors.append(test.assign(segment=segment).groupby("segment", observed=True).event.agg(
             loans="size", events="sum", observed="mean").reset_index().assign(factor=factor))
+    # Lower FICO ranks first. Keep loans without a FICO in the comparison.
+    fico_risk = -test.fico.fillna(np.inf).to_numpy()
+    capacity.extend(dict(model="FICO-only", **row)
+                    for row in review_capacity(test.event, fico_risk))
+
     (lr_scores, lr_cutoff), (rf_scores, rf_cutoff) = holdout_predictions
     intervals = comparison(test.event, lr_scores, rf_scores, lr_cutoff, rf_cutoff)
     tables = dict(cohort_quality=quality, splits=splits, metrics=pd.DataFrame(metrics),

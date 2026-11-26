@@ -42,7 +42,7 @@ SQL uses loan identifiers to connect origination and servicing records. The mode
 
 6. Open **Model comparison uncertainty** to see differences between Logistic Regression and Random Forest. The analysis resamples the same 2025 loans for both models in 1,000 draws, separately within observed events and non-events. It reports percentile intervals for the model gaps, conditional on the fixed scores, thresholds, and observed class counts. These intervals do not include model refitting uncertainty or account for geographic or other clustering.
 
-7. In **Equal review capacity**, rank each model’s calibrated holdout scores and review the top 10% or 20%, rounded down to whole loans. Ties keep the existing first-payment-month and loan-ID order. Capture rate divides flagged events by all observed events. Lift divides capture rate by the actual review share. This comparison measures rank performance at equal holdout capacity.
+7. In **Equal review capacity**, compare each model’s calibrated holdout ranking with a FICO-only baseline. Each approach reviews the top 10% or 20%, rounded down to whole loans. The baseline ranks lower FICO scores first and places missing scores last. Ties keep the existing first-payment-month and loan-ID order. Capture rate divides flagged events by all observed events. Lift divides capture rate by the actual review share. This comparison measures rank performance at equal holdout capacity.
 
 ## SQL policy reconciliation
 
@@ -60,7 +60,7 @@ On Windows, use **Home → Get data → Text/CSV** to import `mortgage/report/*.
 | `policy.csv` | Realized retention and flagged events by calibration target |
 | `policy_reconciliation.csv` | SQLite audit results by model, scenario, and period |
 | `model_uncertainty.csv` | Paired model differences with 95% percentile bounds |
-| `review_capacity.csv` | Events captured and lift at equal 10% and 20% review budgets |
+| `review_capacity.csv` | Events captured and lift for both models and the FICO-only baseline at equal 10% and 20% review budgets |
 | `monthly_stability.csv` | Monthly retention and event capture with model and calibration target filters |
 | `risk_tiers.csv`, `risk_factors.csv` | Observed event rates with loan and event counts |
 
